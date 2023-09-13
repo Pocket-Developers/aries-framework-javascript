@@ -38,9 +38,16 @@ export class WsInboundTransport implements InboundTransport {
       if (!this.socketIds[socketId]) {
         this.logger.debug(`Saving new socket with id ${socketId}.`)
         this.socketIds[socketId] = socket
+        const intervalId = setInterval( () => {
+          socket.ping("ping", true, (error) => {
+            this.logger.debug(`Failed to ping socket with id ${socketId}, closing it.`)
+            socket.close()
+          })
+        }, 10000 )
         const session = new WebSocketTransportSession(socketId, socket, this.logger)
         this.listenOnWebSocketMessages(agent, socket, session)
         socket.on('close', () => {
+          clearInterval(intervalId)
           this.logger.debug('Socket closed.')
           transportService.removeSession(session)
         })
