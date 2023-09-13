@@ -19,8 +19,6 @@ import express from 'express'
 import * as indySdk from 'indy-sdk'
 import { Server } from 'ws'
 
-import { TestLogger } from '../packages/core/tests/logger'
-
 import {
   ConnectionsModule,
   MediatorModule,
@@ -32,6 +30,7 @@ import {
 } from '@aries-framework/core'
 import { IndySdkModule } from '@aries-framework/indy-sdk'
 import { HttpInboundTransport, agentDependencies, WsInboundTransport } from '@aries-framework/node'
+import MediatorLogger from "./logger";
 
 const port = process.env.AGENT_PORT ? Number(process.env.AGENT_PORT) : 3001
 
@@ -42,7 +41,7 @@ const socketServer = new Server({ noServer: true })
 
 const endpoints = process.env.AGENT_ENDPOINTS?.split(',') ?? [`http://localhost:${port}`, `ws://localhost:${port}`]
 
-const logger = new TestLogger(LogLevel.info)
+const logger = new MediatorLogger(LogLevel.info)
 
 const agentConfig: InitConfig = {
   endpoints,
