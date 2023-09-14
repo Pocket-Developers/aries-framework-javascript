@@ -39,7 +39,7 @@ export class WsInboundTransport implements InboundTransport {
         this.logger.debug(`Saving new socket with id ${socketId}.`)
         this.socketIds[socketId] = socket
         const intervalId = setInterval( () => {
-          socket.ping("ping", true, (error) => {
+          socket.ping("ping", false, (error) => {
             this.logger.debug(`Failed to ping socket with id ${socketId}, closing it.`)
             socket.close()
           })
