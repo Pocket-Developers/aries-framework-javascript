@@ -38,16 +38,9 @@ export class WsInboundTransport implements InboundTransport {
       if (!this.socketIds[socketId]) {
         this.logger.debug(`Saving new socket with id ${socketId}.`)
         this.socketIds[socketId] = socket
-        const intervalId = setInterval( () => {
-          socket.ping("ping", false, (error) => {
-            this.logger.debug(`Failed to ping socket with id ${socketId}, closing it.`)
-            socket.close()
-          })
-        }, 10000 )
         const session = new WebSocketTransportSession(socketId, socket, this.logger)
         this.listenOnWebSocketMessages(agent, socket, session)
         socket.on('close', () => {
-          clearInterval(intervalId)
           this.logger.debug('Socket closed.')
           transportService.removeSession(session)
         })
@@ -101,13 +94,26 @@ export class WebSocketTransportSession implements TransportSession {
     if (this.socket.readyState !== WebSocket.OPEN) {
       throw new AriesFrameworkError(`${this.type} transport session has been closed.`)
     }
-    this.socket.send(JSON.stringify(encryptedMessage), (error?) => {
-      if (error != undefined) {
-        this.logger.error('Error sending message: ' + error)
-        throw new AriesFrameworkError(`${this.type} send message failed.`)
-      } else {
-        this.logger.debug(`${this.type} sent message successfully.`)
-      }
+    // websockets get closed by infrastructure after a given timeout (typically 60s)
+    // this is expected and desirable, otherwise the number of opened web sockets could be come unmanageable
+    // but when a mobile app becomes inactive, it stops processing websocket messages until it becomes active again
+    // as a result, messages sent whilst the app is inactive are irremediably lost when the websocket is closed
+    // in order to minimize the risk of message loss, we do a ping/pong and only send the message if a pong was received in response
+    this.socket.ping("ping", false, (err) => {
+      const timeoutId = setTimeout(() => {
+        throw new AriesFrameworkError(`${this.type} recipient is not responding.`)
+      }, 10000)
+      this.socket.once("pong", (socket: WebSocket, data: Buffer) => {
+        clearTimeout(timeoutId)
+        this.socket.send(JSON.stringify(encryptedMessage), (error?) => {
+          if (error != undefined) {
+            this.logger.error('Error sending message: ' + error)
+            throw new AriesFrameworkError(`${this.type} send message failed.`)
+          } else {
+            this.logger.debug(`${this.type} sent message successfully.`)
+          }
+        })
+      })
     })
   }
 
