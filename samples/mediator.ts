@@ -41,7 +41,7 @@ const socketServer = new Server({ noServer: true })
 
 const endpoints = process.env.AGENT_ENDPOINTS?.split(',') ?? [`http://localhost:${port}`, `ws://localhost:${port}`]
 
-const logger = new MediatorLogger(LogLevel.info)
+const logger = new MediatorLogger(LogLevel.debug)
 
 const agentConfig: InitConfig = {
   endpoints,
