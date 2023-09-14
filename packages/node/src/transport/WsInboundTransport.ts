@@ -95,25 +95,32 @@ export class WebSocketTransportSession implements TransportSession {
       throw new AriesFrameworkError(`${this.type} transport session has been closed.`)
     }
     // websockets get closed by infrastructure after a given timeout (typically 60s)
-    // this is expected and desirable, otherwise the number of opened web sockets could be come unmanageable
+    // this is expected and desirable, otherwise the number of opened web sockets could become unmanageable
     // but when a mobile app becomes inactive, it stops processing websocket messages until it becomes active again
     // as a result, messages sent whilst the app is inactive are irremediably lost when the websocket is closed
-    // in order to minimize the risk of message loss, we do a ping/pong and only send the message if a pong was received in response
-    this.socket.ping("ping", false, (err) => {
-      const timeoutId = setTimeout(() => {
-        throw new AriesFrameworkError(`${this.type} recipient is not responding.`)
-      }, 10000)
-      this.socket.once("pong", (socket: WebSocket, data: Buffer) => {
-        clearTimeout(timeoutId)
-        this.socket.send(JSON.stringify(encryptedMessage), (error?) => {
-          if (error != undefined) {
-            this.logger.error('Error sending message: ' + error)
-            throw new AriesFrameworkError(`${this.type} send message failed.`)
-          } else {
-            this.logger.debug(`${this.type} sent message successfully.`)
-          }
-        })
+    // in order to minimize the risk of message loss, we do a ping/pong and only send the message when the pong is received
+
+    const timeoutId = setTimeout(() => {
+      throw new AriesFrameworkError(`${this.type} recipient is not responding.`)
+    }, 10000)
+
+    this.socket.once("pong", (socket: WebSocket, data: Buffer) => {
+      clearTimeout(timeoutId)
+      this.socket.send(JSON.stringify(encryptedMessage), (error?) => {
+        if (error != undefined) {
+          this.logger.error('Error sending message: ' + error)
+          throw new AriesFrameworkError(`${this.type} send message failed.`)
+        } else {
+          this.logger.debug(`${this.type} sent message successfully.`)
+        }
       })
+    })
+
+    this.socket.ping("ping", false, (error?) => {
+      if (error != undefined) {
+        this.logger.error('Error pinging endpoint: ' + error)
+        throw new AriesFrameworkError(`${this.type} send message failed.`)
+      }
     })
   }
 
