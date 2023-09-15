@@ -103,10 +103,11 @@ export class WebSocketTransportSession implements TransportSession {
     let timeoutId: any | null = null;
     const delay = (ms: number, val: any) => new Promise( (resolve) => { timeoutId = setTimeout( resolve, ms ) })
     this.socket.once("pong", () => {
-      this.socket.send(JSON.stringify(encryptedMessage), (error?) => {
+      this.socket.send(JSON.stringify(encryptedMessage), (error? : Error | undefined) => {
         if (error != undefined) {
-          this.logger.error('Error sending message: ' + error)
-          throw new AriesFrameworkError(`${this.type} send message failed.`)
+          const message = `${this.type} send message failed.`
+          this.logger.debug(message + " Error: " + error)
+          throw new AriesFrameworkError(message, { cause: error })
         } else {
           this.logger.debug(`${this.type} sent message successfully.`)
           success = true;
@@ -117,8 +118,9 @@ export class WebSocketTransportSession implements TransportSession {
     this.socket.ping("ping")
     await delay(10000, () => success = false)
     if(!success) {
-        this.logger.error('Error pinging endpoint')
-        throw new AriesFrameworkError(`${this.type} send message failed.`)
+        const message = `${this.type} send message timed out.`
+        this.logger.debug(message)
+        throw new AriesFrameworkError(message)
     }
   }
 
