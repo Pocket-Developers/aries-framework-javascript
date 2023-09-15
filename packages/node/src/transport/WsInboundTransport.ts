@@ -99,29 +99,27 @@ export class WebSocketTransportSession implements TransportSession {
     // but when a mobile app becomes inactive, it stops processing websocket messages until it becomes active again
     // as a result, messages sent whilst the app is inactive are irremediably lost when the websocket is closed
     // in order to minimize the risk of message loss, we do a ping/pong and only send the message when the pong is received
-
-    const timeoutId = setTimeout(() => {
-      throw new AriesFrameworkError(`${this.type} recipient is not responding.`)
-    }, 10000)
-
-    this.socket.once("pong", (socket: WebSocket, data: Buffer) => {
-      clearTimeout(timeoutId)
+    let success = false;
+    let timeoutId: any | null = null;
+    const delay = (ms: number, val: any) => new Promise( (resolve) => { timeoutId = setTimeout( resolve, ms ) })
+    this.socket.once("pong", () => {
       this.socket.send(JSON.stringify(encryptedMessage), (error?) => {
         if (error != undefined) {
           this.logger.error('Error sending message: ' + error)
           throw new AriesFrameworkError(`${this.type} send message failed.`)
         } else {
           this.logger.debug(`${this.type} sent message successfully.`)
+          success = true;
+          clearTimeout(timeoutId)
         }
       })
     })
-
-    this.socket.ping("ping", false, (error?) => {
-      if (error != undefined) {
-        this.logger.error('Error pinging endpoint: ' + error)
+    this.socket.ping("ping")
+    await delay(10000, () => success = false)
+    if(!success) {
+        this.logger.error('Error pinging endpoint')
         throw new AriesFrameworkError(`${this.type} send message failed.`)
-      }
-    })
+    }
   }
 
   public async close(): Promise<void> {
