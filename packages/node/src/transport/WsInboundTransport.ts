@@ -72,7 +72,7 @@ export class WsInboundTransport implements InboundTransport {
       try {
         await messageReceiver.receiveMessage(JSON.parse(event.data), { session })
       } catch (error) {
-        this.logger.error('Error processing message: ' + error)
+        this.logger.error(`Error processing message: ${error}`)
       }
     })
   }
@@ -82,7 +82,7 @@ export class WebSocketTransportSession implements TransportSession {
   public id: string
   public readonly type = 'WebSocket'
   public socket: WebSocket
-  private logger!: Logger
+  private logger: Logger
 
   public constructor(id: string, socket: WebSocket, logger: Logger) {
     this.id = id
@@ -94,34 +94,14 @@ export class WebSocketTransportSession implements TransportSession {
     if (this.socket.readyState !== WebSocket.OPEN) {
       throw new AriesFrameworkError(`${this.type} transport session has been closed.`)
     }
-    // websockets get closed by infrastructure after a given timeout (typically 60s)
-    // this is expected and desirable, otherwise the number of opened web sockets could become unmanageable
-    // but when a mobile app becomes inactive, it stops processing websocket messages until it becomes active again
-    // as a result, messages sent whilst the app is inactive are irremediably lost when the websocket is closed
-    // in order to minimize the risk of message loss, we do a ping/pong and only send the message when the pong is received
-    let success = false;
-    let timeoutId: any | null = null;
-    const delay = (ms: number, val: any) => new Promise( (resolve) => { timeoutId = setTimeout( resolve, ms ) })
-    this.socket.once("pong", () => {
-      this.socket.send(JSON.stringify(encryptedMessage), (error? : Error | undefined) => {
-        if (error != undefined) {
-          const message = `${this.type} send message failed.`
-          this.logger.debug(message + " Error: " + error)
-          throw new AriesFrameworkError(message, { cause: error })
-        } else {
-          this.logger.debug(`${this.type} sent message successfully.`)
-          success = true;
-          clearTimeout(timeoutId)
-        }
-      })
+    this.socket.send(JSON.stringify(encryptedMessage), (error?) => {
+      if (error != undefined) {
+        this.logger.debug(`Error sending message: ${error}`)
+        throw new AriesFrameworkError(`${this.type} send message failed.`, { cause: error })
+      } else {
+        this.logger.debug(`${this.type} sent message successfully.`)
+      }
     })
-    this.socket.ping("ping")
-    await delay(10000, () => success = false)
-    if(!success) {
-        const message = `${this.type} send message timed out.`
-        this.logger.debug(message)
-        throw new AriesFrameworkError(message)
-    }
   }
 
   public async close(): Promise<void> {

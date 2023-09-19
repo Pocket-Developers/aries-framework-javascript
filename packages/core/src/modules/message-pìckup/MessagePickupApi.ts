@@ -33,7 +33,7 @@ export class MessagePickupApi<MPPs extends MessagePickupProtocol[] = [V1MessageP
   private messageSender: MessageSender
   private agentContext: AgentContext
   private connectionService: ConnectionService
-  private logger!: Logger
+  private logger: Logger
 
   public constructor(
     messageSender: MessageSender,
@@ -65,7 +65,7 @@ export class MessagePickupApi<MPPs extends MessagePickupProtocol[] = [V1MessageP
    * @param options: connectionId associated to the message and the encrypted message itself
    */
   public async queueMessage(options: QueueMessageOptions): Promise<QueueMessageReturnType> {
-    this.logger.debug(`Queuing message...`)
+    this.logger.debug('Queuing message...')
     const connectionRecord = await this.connectionService.getById(this.agentContext, options.connectionId)
 
     const messageRepository = this.agentContext.dependencyManager.resolve<MessageRepository>(
