@@ -49,38 +49,14 @@ const endpoints = process.env.AGENT_ENDPOINTS?.split(',') ?? [`http://localhost:
 
 const logger = new MediatorLogger(LogLevel.debug)
 
-const db_host = process.env.POSTGRESQL_HOST || "localhost"
-const db_port = process.env.POSTGRESQL_PORT ? Number(process.env.POSTGRESQL_PORT) : 5432
-logger.info(`Using PostgreSQL db @${db_host}:${db_port}`)
-
-const postgresServerConfig: AskarWalletPostgresConfig = {
-  host: `${db_host}:${db_port}`,
-  connectTimeout: 5
-}
-
-const postgresCredentialsConfig: AskarWalletPostgresCredentials = {
-  account: process.env.POSTGRESQL_USER || "postgres",
-  password: process.env.POSTGRESQL_PASSWORD || "postgres" /*,
-  adminAccount: "postgres",
-  adminPassword: "postgres" */
-}
-
-const postgresStorageConfig: AskarWalletPostgresStorageConfig = {
-  type: 'postgres',
-  config: postgresServerConfig,
-  credentials: postgresCredentialsConfig
-}
-
 const agentConfig: InitConfig = {
   endpoints,
   label: process.env.AGENT_LABEL || 'Aries Framework JavaScript Mediator',
   walletConfig: {
-    id: process.env.POSTGRESQL_DBNAME || process.env.WALLET_NAME || 'pocket-mediator-pgdb',
-    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript',
-    storage: postgresStorageConfig
+    id: process.env.WALLET_NAME || 'AriesFrameworkJavaScript',
+    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript'
   },
-
-  logger,
+  logger
 }
 
 // Set up agent
@@ -113,13 +89,20 @@ agent.registerOutboundTransport(wsOutboundTransport)
 
 // Allow to create invitation, no other way to ask for invitation yet
 httpInboundTransport.app.get('/invitation', async (req, res) => {
+  logger.info("Received invitation request")
   if (typeof req.query.c_i === 'string') {
+    logger.debug(`Creating invitation for received URL: ${req.url}`)
     const invitation = ConnectionInvitationMessage.fromUrl(req.url)
-    res.send(invitation.toJSON())
+    const response = invitation.toJSON();
+    logger.debug(`Sending invitation: ${response}`)
+    res.send(response)
   } else {
+    logger.debug("Creating invitation from scratch")
     const { outOfBandInvitation } = await agent.oob.createInvitation()
     const httpEndpoint = config.endpoints.find((e) => e.startsWith('http'))
-    res.send(outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' }))
+    const response = outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' });
+    logger.debug(`Sending invitation: ${response}`)
+    res.send(response)
   }
 })
 
