@@ -16,7 +16,10 @@ import type { InitConfig } from '@aries-framework/core'
 import type { Socket } from 'net'
 
 import express from 'express'
+import * as indySdk from 'indy-sdk'
 import { Server } from 'ws'
+
+import { TestLogger } from '../packages/core/tests/logger'
 
 import {
   ConnectionsModule,
@@ -27,16 +30,8 @@ import {
   LogLevel,
   WsOutboundTransport,
 } from '@aries-framework/core'
-import {
-  AskarModule,
-  AskarWalletPostgresConfig,
-  AskarWalletPostgresCredentials,
-  AskarWalletPostgresStorageConfig
-} from '@aries-framework/askar'
-import { ariesAskar } from '@hyperledger/aries-askar-nodejs'
-import { HttpInboundTransport, agentDependencies } from '@aries-framework/node'
-import MediatorLogger from "./logger";
-import {WsInboundTransport} from "./WsInboundTransport";
+import { IndySdkModule } from '@aries-framework/indy-sdk'
+import { HttpInboundTransport, agentDependencies, WsInboundTransport } from '@aries-framework/node'
 
 const port = process.env.AGENT_PORT ? Number(process.env.AGENT_PORT) : 3001
 
@@ -47,16 +42,17 @@ const socketServer = new Server({ noServer: true })
 
 const endpoints = process.env.AGENT_ENDPOINTS?.split(',') ?? [`http://localhost:${port}`, `ws://localhost:${port}`]
 
-const logger = new MediatorLogger(LogLevel.debug)
+const logger = new TestLogger(LogLevel.info)
 
 const agentConfig: InitConfig = {
   endpoints,
   label: process.env.AGENT_LABEL || 'Aries Framework JavaScript Mediator',
   walletConfig: {
     id: process.env.WALLET_NAME || 'AriesFrameworkJavaScript',
-    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript'
+    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript',
   },
-  logger
+
+  logger,
 }
 
 // Set up agent
@@ -64,7 +60,7 @@ const agent = new Agent({
   config: agentConfig,
   dependencies: agentDependencies,
   modules: {
-    askar: new AskarModule( { ariesAskar }),
+    indySdk: new IndySdkModule({ indySdk }),
     mediator: new MediatorModule({
       autoAcceptMediationRequests: true,
     }),
@@ -89,33 +85,25 @@ agent.registerOutboundTransport(wsOutboundTransport)
 
 // Allow to create invitation, no other way to ask for invitation yet
 httpInboundTransport.app.get('/invitation', async (req, res) => {
-  logger.info("Received invitation request")
   if (typeof req.query.c_i === 'string') {
-    logger.debug(`Creating invitation for received URL: ${req.url}`)
     const invitation = ConnectionInvitationMessage.fromUrl(req.url)
-    const response = invitation.toJSON();
-    logger.debug(`Sending invitation: ${response}`)
-    res.send(response)
+    res.send(invitation.toJSON())
   } else {
-    logger.debug("Creating invitation from scratch")
     const { outOfBandInvitation } = await agent.oob.createInvitation()
     const httpEndpoint = config.endpoints.find((e) => e.startsWith('http'))
-    const response = outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' });
-    logger.debug(`Sending invitation: ${response}`)
-    res.send(response)
+    res.send(outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' }))
   }
 })
 
 const run = async () => {
   await agent.initialize()
 
-  // When an 'upgrade' to WS is made on our http server, we forward the request to the WS server
-  // on(event: 'upgrade', listener: (req: InstanceType<Request>, socket: stream.Duplex, head: Buffer) => void): this;
+  // When an 'upgrade' to WS is made on our http server, we forward the
+  // request to the WS server
   httpInboundTransport.server?.on('upgrade', (request, socket, head) => {
     socketServer.handleUpgrade(request, socket as Socket, head, (socket) => {
       socketServer.emit('connection', socket, request)
     })
-    return socketServer
   })
 }
 
