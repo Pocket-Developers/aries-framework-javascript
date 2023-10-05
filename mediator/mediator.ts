@@ -12,7 +12,7 @@
  * to the mediator, request mediation and set the mediator as default.
  */
 
-import type { InitConfig } from '@aries-framework/core'
+import type {InitConfig, WalletStorageConfig} from '@aries-framework/core'
 import type { Socket } from 'net'
 
 import express from 'express'
@@ -81,7 +81,8 @@ const agentConfig: InitConfig = {
   label: process.env.AGENT_LABEL || 'Aries Framework JavaScript Mediator',
   walletConfig: {
     id: walletName,
-    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript'
+    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript',
+    storage: postgresStorageConfig as unknown as WalletStorageConfig
   },
   autoUpdateStorageOnStartup: true,
   logger
