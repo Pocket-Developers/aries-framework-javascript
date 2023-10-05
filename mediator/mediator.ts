@@ -16,10 +16,7 @@ import type { InitConfig } from '@aries-framework/core'
 import type { Socket } from 'net'
 
 import express from 'express'
-import * as indySdk from 'indy-sdk'
 import { Server } from 'ws'
-
-import MediatorLogger from './logger'
 
 import {
   ConnectionsModule,
@@ -30,8 +27,15 @@ import {
   LogLevel,
   WsOutboundTransport,
 } from '@aries-framework/core'
-import { IndySdkModule } from '@aries-framework/indy-sdk'
+import {
+  AskarModule,
+  AskarWalletPostgresConfig,
+  AskarWalletPostgresCredentials,
+  AskarWalletPostgresStorageConfig
+} from '@aries-framework/askar'
+import { ariesAskar } from '@hyperledger/aries-askar-nodejs'
 import { HttpInboundTransport, agentDependencies } from '@aries-framework/node'
+import MediatorLogger from "./logger";
 import {WsInboundTransport} from "./WsInboundTransport";
 
 const port = process.env.AGENT_PORT ? Number(process.env.AGENT_PORT) : 3001
@@ -45,15 +49,44 @@ const endpoints = process.env.AGENT_ENDPOINTS?.split(',') ?? [`http://localhost:
 
 const logger = new MediatorLogger(LogLevel.info)
 
+const db_host = process.env.POSTGRESQL_HOST || "localhost"
+const db_port = process.env.POSTGRESQL_PORT ? Number(process.env.POSTGRESQL_PORT) : 5432
+logger.info(`Using PostgreSQL db @${db_host}:${db_port}`)
+
+const postgresServerConfig: AskarWalletPostgresConfig = {
+  host: `${db_host}:${db_port}`,
+  connectTimeout: 5
+}
+
+const postgresCredentialsConfig: AskarWalletPostgresCredentials = {
+  account: process.env.POSTGRESQL_USER || "postgres",
+  password: process.env.POSTGRESQL_PASSWORD || "postgres" /*,
+  adminAccount: process.env.POSTGRESQL_USER || "postgres",
+  adminPassword: process.env.POSTGRESQL_USER || "postgres" */
+}
+
+const account = postgresCredentialsConfig.account
+logger.info(`Using PostgreSQL account ${account}`)
+
+const postgresStorageConfig: AskarWalletPostgresStorageConfig = {
+  type: 'postgres',
+  config: postgresServerConfig,
+  credentials: postgresCredentialsConfig
+}
+
+const walletName = process.env.POSTGRESQL_DBNAME ? process.env.POSTGRESQL_DBNAME + "-wallet" : process.env.WALLET_NAME || 'pocket-mediator-pgdb'
+logger.info(`Using PostgreSQL database ${walletName}`)
+
+// logger.error(`PostgreSQL storage is disabled - DO NOT USE IN PROD!!!`)
 const agentConfig: InitConfig = {
   endpoints,
   label: process.env.AGENT_LABEL || 'Aries Framework JavaScript Mediator',
   walletConfig: {
-    id: process.env.WALLET_NAME || 'AriesFrameworkJavaScript',
-    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript',
+    id: walletName,
+    key: process.env.WALLET_KEY || 'AriesFrameworkJavaScript'
   },
-
-  logger,
+  autoUpdateStorageOnStartup: true,
+  logger
 }
 
 // Set up agent
@@ -61,7 +94,7 @@ const agent = new Agent({
   config: agentConfig,
   dependencies: agentDependencies,
   modules: {
-    indySdk: new IndySdkModule({ indySdk }),
+    askar: new AskarModule( { ariesAskar }),
     mediator: new MediatorModule({
       autoAcceptMediationRequests: true,
     }),
@@ -86,25 +119,33 @@ agent.registerOutboundTransport(wsOutboundTransport)
 
 // Allow to create invitation, no other way to ask for invitation yet
 httpInboundTransport.app.get('/invitation', async (req, res) => {
+  logger.info("Received invitation request")
   if (typeof req.query.c_i === 'string') {
+    logger.debug(`Creating invitation for received URL: ${req.url}`)
     const invitation = ConnectionInvitationMessage.fromUrl(req.url)
-    res.send(invitation.toJSON())
+    const response = invitation.toJSON();
+    logger.debug(`Sending invitation: ${response}`)
+    res.send(response)
   } else {
+    logger.debug("Creating invitation from scratch")
     const { outOfBandInvitation } = await agent.oob.createInvitation()
     const httpEndpoint = config.endpoints.find((e) => e.startsWith('http'))
-    res.send(outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' }))
+    const response = outOfBandInvitation.toUrl({ domain: httpEndpoint + '/invitation' });
+    logger.debug(`Sending invitation: ${response}`)
+    res.send(response)
   }
 })
 
 const run = async () => {
   await agent.initialize()
 
-  // When an 'upgrade' to WS is made on our http server, we forward the
-  // request to the WS server
+  // When an 'upgrade' to WS is made on our http server, we forward the request to the WS server
+  // on(event: 'upgrade', listener: (req: InstanceType<Request>, socket: stream.Duplex, head: Buffer) => void): this;
   httpInboundTransport.server?.on('upgrade', (request, socket, head) => {
     socketServer.handleUpgrade(request, socket as Socket, head, (socket) => {
       socketServer.emit('connection', socket, request)
     })
+    return socketServer
   })
 }
 
