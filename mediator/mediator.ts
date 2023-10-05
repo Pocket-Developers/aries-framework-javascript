@@ -31,7 +31,8 @@ import {
   WsOutboundTransport,
 } from '@aries-framework/core'
 import { IndySdkModule } from '@aries-framework/indy-sdk'
-import { HttpInboundTransport, agentDependencies, WsInboundTransport } from '@aries-framework/node'
+import { HttpInboundTransport, agentDependencies } from '@aries-framework/node'
+import {WsInboundTransport} from "./WsInboundTransport";
 
 const port = process.env.AGENT_PORT ? Number(process.env.AGENT_PORT) : 3001
 
