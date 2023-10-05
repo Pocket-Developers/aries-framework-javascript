@@ -16,6 +16,7 @@ import type { InitConfig } from '@aries-framework/core'
 import type { Socket } from 'net'
 
 import express from 'express'
+import * as indySdk from 'indy-sdk'
 import { Server } from 'ws'
 
 import {
@@ -27,14 +28,14 @@ import {
   LogLevel,
   WsOutboundTransport,
 } from '@aries-framework/core'
+import { IndySdkModule } from '@aries-framework/indy-sdk'
 import {
-  AskarModule,
-  AskarWalletPostgresConfig,
-  AskarWalletPostgresCredentials,
-  AskarWalletPostgresStorageConfig
-} from '@aries-framework/askar'
-import { ariesAskar } from '@hyperledger/aries-askar-nodejs'
-import { HttpInboundTransport, agentDependencies } from '@aries-framework/node'
+  HttpInboundTransport,
+  agentDependencies,
+  IndySdkPostgresStorageConfig,
+  IndySdkPostgresWalletScheme,
+  loadIndySdkPostgresPlugin
+} from '@aries-framework/node'
 import MediatorLogger from "./logger";
 import {WsInboundTransport} from "./WsInboundTransport";
 
@@ -53,26 +54,23 @@ const db_host = process.env.POSTGRESQL_HOST || "localhost"
 const db_port = process.env.POSTGRESQL_PORT ? Number(process.env.POSTGRESQL_PORT) : 5432
 logger.info(`Using PostgreSQL db @${db_host}:${db_port}`)
 
-const postgresServerConfig: AskarWalletPostgresConfig = {
-  host: `${db_host}:${db_port}`,
-  connectTimeout: 5
+// IndySdkPostgresStorageConfig defines interface for the Postgres plugin configuration.
+const postgresStorageConfig: IndySdkPostgresStorageConfig = {
+  type: 'postgres_storage',
+  config: {
+    url: `${db_host}:${db_port}`,
+    wallet_scheme: IndySdkPostgresWalletScheme.DatabasePerWallet,
+  },
+  credentials: {
+    account: process.env.POSTGRESQL_USER || "postgres",
+    password: process.env.POSTGRESQL_PASSWORD || "postgres",
+    admin_account: null as any as string/*process.env.POSTGRESQL_USER || "postgres" */,
+    admin_password: null as any as string/*process.env.POSTGRESQL_USER || "postgres" */
+  }
 }
 
-const postgresCredentialsConfig: AskarWalletPostgresCredentials = {
-  account: process.env.POSTGRESQL_USER || "postgres",
-  password: process.env.POSTGRESQL_PASSWORD || "postgres" /*,
-  adminAccount: process.env.POSTGRESQL_USER || "postgres",
-  adminPassword: process.env.POSTGRESQL_USER || "postgres" */
-}
-
-const account = postgresCredentialsConfig.account
-logger.info(`Using PostgreSQL account ${account}`)
-
-const postgresStorageConfig: AskarWalletPostgresStorageConfig = {
-  type: 'postgres',
-  config: postgresServerConfig,
-  credentials: postgresCredentialsConfig
-}
+// load the postgres wallet plugin before agent initialization
+loadIndySdkPostgresPlugin(postgresStorageConfig.config, postgresStorageConfig.credentials)
 
 const walletName = process.env.POSTGRESQL_DBNAME ? process.env.POSTGRESQL_DBNAME + "-wallet" : process.env.WALLET_NAME || 'pocket-mediator-pgdb'
 logger.info(`Using PostgreSQL database ${walletName}`)
@@ -94,7 +92,7 @@ const agent = new Agent({
   config: agentConfig,
   dependencies: agentDependencies,
   modules: {
-    askar: new AskarModule( { ariesAskar }),
+    indySdk: new IndySdkModule({ indySdk }),
     mediator: new MediatorModule({
       autoAcceptMediationRequests: true,
     }),
